@@ -303,12 +303,7 @@ pub async fn register(
 }
 
 pub async fn register_with_email_only(
-    (http_request, state, connection, parameters): (
-        HttpRequest,
-        Data<AppState>,
-        Connection,
-        Json<RegisterEmailOnlyRequest>,
-    ),
+    (state, connection, parameters): (Data<AppState>, Connection, Json<RegisterEmailOnlyRequest>),
 ) -> Result<HttpResponse, ApiError> {
     if !state.config.email_only_registration_allowed {
         return application::method_not_allowed();
