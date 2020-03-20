@@ -32,8 +32,10 @@ pub(crate) fn get_cached_value<T: Serialize>(
     if config.redis_connection_string.is_some() {
         match cache_connection.get(&query_serialized) {
             Ok(cached_value) => {
-                let payload: Value = serde_json::from_str(&cached_value).ok()?;
-                return Some(HttpResponse::Ok().json(&payload));
+                if let Some(value) = cached_value {
+                    let payload: Value = serde_json::from_str(&value).ok()?;
+                    return Some(HttpResponse::Ok().json(&payload));
+                }
             }
             Err(err) => {
                 error!("helpers::caching#get_cached_value: {:?}", err);

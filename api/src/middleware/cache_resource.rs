@@ -2,6 +2,7 @@ use crate::database::Connection;
 use crate::extractors::*;
 use crate::helpers::*;
 use crate::server::GetAppState;
+use crate::utils::logging::log_request;
 use actix_service::Service;
 use actix_web::error;
 use actix_web::http::header::*;
@@ -12,12 +13,13 @@ use futures::future::{ok, Ready};
 use http::caching::*;
 use itertools::Itertools;
 use log::Level;
-use logging::jlog;
 use serde_json::Value;
 use std::collections::BTreeMap;
+use url::form_urlencoded;
 use uuid::Uuid;
 
 const CACHED_RESPONSE_HEADER: &'static str = "X-Cached-Response";
+const CACHE_BYPASS_HEADER: &'static str = "Cache-Bypass";
 
 #[derive(PartialEq, Clone)]
 pub enum OrganizationLoad {
@@ -37,6 +39,8 @@ pub enum CacheUsersBy {
     GlobalRoles,
     // Users are cached by their ID
     UserId,
+    // Only public users (logged out or lacking organization_users) are cached
+    PublicUsersOnly,
     // Users are cached by their associated organization roles (cannot be used for event specific role endpoints)
     OrganizationScopePresence(OrganizationLoad, Scopes),
 }
@@ -70,6 +74,12 @@ impl CacheConfiguration {
             cache_data: BTreeMap::new(),
         }
     }
+
+    fn start_error(mut self, error: &str) -> Cache {
+        self.error = true;
+        error!("CacheResource Middleware start: {:?}", error);
+        return Cache::Miss(self);
+    }
 }
 
 impl CacheResource {
@@ -82,13 +92,18 @@ impl CacheResource {
     fn start(&self, request: &HttpRequest) -> Cache {
         let mut cache_configuration = CacheConfiguration::new();
         if request.method() == Method::GET {
-            if let Ok(url) = url::Url::parse(&request.uri().to_string()) {
-                for (key, value) in url.query_pairs() {
-                    cache_configuration
-                        .cache_data
-                        .insert(key.to_string(), value.to_string());
-                }
+            if request
+                .headers()
+                .contains_key(CACHE_BYPASS_HEADER.parse::<HeaderName>().unwrap())
+            {
+                return Cache::Miss(cache_configuration);
             }
+            for (key, value) in form_urlencoded::parse(request.uri().query().unwrap_or("").as_bytes()) {
+                cache_configuration
+                    .cache_data
+                    .insert(key.to_string(), value.to_string());
+            }
+
             let user_text = "x-user-role".to_string();
             cache_configuration
                 .cache_data
@@ -103,9 +118,7 @@ impl CacheResource {
                 let user = match OptionalUser::from_request(request, &mut dev::Payload::None).into_inner() {
                     Ok(user) => user,
                     Err(error) => {
-                        cache_configuration.error = true;
-                        error!("CacheResource Middleware start: {:?}", error);
-                        return Cache::Miss(cache_configuration);
+                        return cache_configuration.start_error(&format!("{:?}", error));
                     }
                 };
                 if let Some(user) = user.0 {
@@ -117,6 +130,11 @@ impl CacheResource {
                         }
                         CacheUsersBy::UserId => {
                             cache_configuration.user_key = Some(user.id().to_string());
+                        }
+                        CacheUsersBy::PublicUsersOnly => {
+                            if !user.is_public_user {
+                                return Cache::Miss(cache_configuration);
+                            }
                         }
                         CacheUsersBy::GlobalRoles => {
                             cache_configuration.user_key = Some(user.user.role.iter().map(|r| r.to_string()).join(","));
@@ -132,9 +150,7 @@ impl CacheResource {
                                         let organization = match Organization::find(organization_id, connection) {
                                             Ok(organization) => organization,
                                             Err(error) => {
-                                                cache_configuration.error = true;
-                                                error!("CacheResource Middleware start: {:?}", error);
-                                                return Cache::Miss(cache_configuration);
+                                                return cache_configuration.start_error(&format!("{:?}", error));
                                             }
                                         };
 
@@ -142,9 +158,7 @@ impl CacheResource {
                                             match user.has_scope_for_organization(*scope, &organization, connection) {
                                                 Ok(organization_scopes) => organization_scopes,
                                                 Err(error) => {
-                                                    cache_configuration.error = true;
-                                                    error!("CacheResource Middleware start: {:?}", error);
-                                                    return Cache::Miss(cache_configuration);
+                                                    return cache_configuration.start_error(&format!("{:?}", error));
                                                 }
                                             };
 
@@ -153,9 +167,7 @@ impl CacheResource {
                                     }
                                 }
                             } else {
-                                cache_configuration.error = true;
-                                error!("CacheResource Middleware start: unable to load connection");
-                                return Cache::Miss(cache_configuration);
+                                return cache_configuration.start_error("unable to load connection");
                             }
                         }
                     }
@@ -319,12 +331,24 @@ where
 
         match cache {
             Cache::Hit(response, status) => {
-                jlog!(Level::Debug, "bigneon_api::cache_resource", "Cache hit", {"cache_user_key": status.user_key, "cache_response": status.cache_response});
+                log_request(
+                    Level::Debug,
+                    "api::cache_resource",
+                    "Cache hit",
+                    &http_req,
+                    json!({"cache_user_key": status.user_key, "cache_response": status.cache_response, "cache_hit": true}),
+                );
                 let response = dev::ServiceResponse::new(http_req, response);
                 Box::pin(async move { Ok(CacheResource::update(status, response)) })
             }
             Cache::Miss(status) => {
-                jlog!(Level::Debug, "bigneon_api::cache_resource", "Cache miss", {"cache_user_key": status.user_key, "cache_response": status.cache_response});
+                log_request(
+                    Level::Debug,
+                    "api::cache_resource",
+                    "Cache miss",
+                    &http_req,
+                    json!({"cache_user_key": status.user_key, "cache_response": status.cache_response, "cache_hit": false}),
+                );
                 let request = dev::ServiceRequest::from_parts(http_req, payload)
                     .unwrap_or_else(|_| unreachable!("Failed to recompose request in CacheResourceService::call"));
                 let fut = service.borrow_mut().call(request);

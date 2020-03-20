@@ -775,7 +775,7 @@ impl User {
             .to_db_error(ErrorCode::QueryError, "Could not load profile for organization fan")?;
 
         let result = result.remove(0);
-        if result.ticket_sales == 0 && result.tickets_owned == 0 && result.revenue_in_cents == 0 {
+        if !organization.has_fan(&self, conn)? {
             return DatabaseError::no_results("Could not load profile for organization fan, NotFound");
         }
         Ok(FanProfile {
@@ -818,12 +818,24 @@ impl User {
             )
     }
 
+    pub fn find_for_authentication(id: Uuid, conn: &PgConnection) -> Result<(User, bool), DatabaseError> {
+        users::table
+            .left_join(organization_users::table.on(organization_users::user_id.eq(users::id)))
+            .filter(users::id.eq(id))
+            .select((
+                users::all_columns,
+                sql("not(users.role && '{Admin, Super}') AND organization_users.id IS NULL"),
+            ))
+            .distinct()
+            .get_result(conn)
+            .to_db_error(ErrorCode::QueryError, "Error loading user")
+    }
+
     pub fn find(id: Uuid, conn: &PgConnection) -> Result<User, DatabaseError> {
-        DatabaseError::wrap(
-            ErrorCode::QueryError,
-            "Error loading user",
-            users::table.find(id).first::<User>(conn),
-        )
+        users::table
+            .find(id)
+            .first::<User>(conn)
+            .to_db_error(ErrorCode::QueryError, "Error loading user")
     }
 
     pub fn find_by_ids(user_ids: &Vec<Uuid>, conn: &PgConnection) -> Result<Vec<User>, DatabaseError> {

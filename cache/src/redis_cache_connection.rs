@@ -9,7 +9,7 @@ type Milliseconds = usize;
 
 // Contract for the Cache
 pub trait CacheConnection {
-    fn get(&mut self, key: &str) -> Result<String, CacheError>;
+    fn get(&mut self, key: &str) -> Result<Option<String>, CacheError>;
     fn delete(&mut self, key: &str) -> Result<(), CacheError>;
     fn add(&mut self, key: &str, data: &str, ttl: Option<Milliseconds>) -> Result<(), CacheError>;
     fn publish(&mut self, channel: &str, message: &str) -> Result<(), CacheError>;
@@ -52,7 +52,7 @@ impl RedisCacheConnection {
 }
 
 impl CacheConnection for RedisCacheConnection {
-    fn get(&mut self, key: &str) -> Result<String, CacheError> {
+    fn get(&mut self, key: &str) -> Result<Option<String>, CacheError> {
         Ok(self.conn()?.get(key)?)
     }
 
@@ -67,7 +67,7 @@ impl CacheConnection for RedisCacheConnection {
     }
 
     fn delete_by_key_fragment(&mut self, key_fragment: &str) -> Result<(), CacheError> {
-        let matches: Vec<String> = self.conn()?.keys(format!("*{}*", key_fragment))?;
+        let matches: Vec<String> = self.conn()?.keys(key_fragment)?;
         for key in matches {
             self.conn()?.del(key.to_string())?;
         }
@@ -100,11 +100,11 @@ mod tests {
         if let Some(mut conn) = RedisCacheConnection::create_connection_pool("redis://127.0.0.1/", 10, 10, 10).ok() {
             // store key for 10 milliseconds
             conn.add("key", "value", Some(10)).unwrap();
-            assert_eq!("value", conn.get("key").unwrap());
+            assert_eq!(Some("value".to_string()), conn.get("key").unwrap());
 
             sleep(11);
             // key should now be expired
-            assert!(conn.get("key").is_err());
+            assert!(conn.get("key").unwrap().is_none());
         }
     }
 }

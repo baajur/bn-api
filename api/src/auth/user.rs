@@ -22,11 +22,13 @@ pub struct User {
     pub uri: String,
     pub method: String,
     pub global_scopes_only: bool,
+    pub is_public_user: bool,
 }
 
 impl User {
     pub fn new(
         user: DbUser,
+        is_public_user: bool,
         request: &HttpRequest,
         limited_scopes: Option<Vec<String>>,
     ) -> Result<User, EnumParseError> {
@@ -37,6 +39,7 @@ impl User {
             uri: request.uri().to_string(),
             method: request.method().to_string(),
             global_scopes_only: false,
+            is_public_user,
         };
         if let Some(scopes) = limited_scopes {
             result.global_scopes = scopes;

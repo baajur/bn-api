@@ -7,6 +7,7 @@ pub mod deep_linker;
 pub mod expo;
 pub mod gen_sitemap;
 pub mod google_recaptcha;
+pub mod logging;
 pub mod redis;
 pub mod sendgrid;
 pub mod serializers;

@@ -27,7 +27,7 @@ impl FromRequest for User {
             Err(_) => return err(AuthError::unauthorized("Invalid Token").into()),
         };
 
-        let user = match DbUser::find(user_id, connection.get()) {
+        let (user, is_public_user) = match DbUser::find_for_authentication(user_id, connection.get()) {
             Ok(user) => user,
             Err(_) => return err(AuthError::unauthorized("Invalid Token").into()),
         };
@@ -36,7 +36,7 @@ impl FromRequest for User {
             err(AuthError::unauthorized("User account is disabled").into())
         } else {
             ready(
-                User::new(user, req, token.scopes)
+                User::new(user, is_public_user, req, token.scopes)
                     .map_err(|_| AuthError::unauthorized("User has invalid role data").into()),
             )
         }
