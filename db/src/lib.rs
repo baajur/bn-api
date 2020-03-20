@@ -9,6 +9,8 @@
 #![deny(unused_must_use)]
 #![deny(unused_extern_crates)]
 #![deny(dead_code)]
+#![deny(unused_parens)]
+#![deny(deprecated)]
 #![recursion_limit = "256"]
 #[macro_use]
 extern crate diesel;

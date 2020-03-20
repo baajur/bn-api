@@ -1,4 +1,6 @@
 use db::models::{deserialize_unless_blank, NewUser, User};
+use rand::rngs::OsRng;
+use rand::RngCore;
 
 #[derive(Deserialize)]
 pub struct RegisterRequest {
@@ -44,5 +46,21 @@ impl RegisterRequest {
             password: password.to_string(),
             captcha_response,
         }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct RegisterEmailOnlyRequest {
+    pub email: String,
+    #[serde(default, deserialize_with = "deserialize_unless_blank")]
+    pub first_name: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_unless_blank")]
+    pub last_name: Option<String>,
+}
+
+impl From<RegisterEmailOnlyRequest> for NewUser {
+    fn from(value: RegisterEmailOnlyRequest) -> Self {
+        let password = OsRng.next_u64().to_string();
+        User::create(value.first_name, value.last_name, Some(value.email), None, &password)
     }
 }

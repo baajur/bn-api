@@ -53,6 +53,10 @@ pub fn not_found() -> Result<HttpResponse, ApiError> {
     warn!("Not found");
     Ok(HttpResponse::new(StatusCode::NOT_FOUND))
 }
+pub fn method_not_allowed() -> Result<HttpResponse, ApiError> {
+    warn!("Method not allowed");
+    Ok(HttpResponse::new(StatusCode::METHOD_NOT_ALLOWED))
+}
 
 pub fn created(json: serde_json::Value) -> Result<HttpResponse, ApiError> {
     Ok(HttpResponse::Created().json(json))

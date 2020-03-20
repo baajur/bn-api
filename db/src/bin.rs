@@ -8,6 +8,7 @@
 // Unused results is more often than not an error
 #![deny(unused_must_use)]
 #![deny(unused_extern_crates)]
+#![deny(deprecated)]
 
 #[macro_use]
 extern crate diesel_migrations;
@@ -26,7 +27,6 @@ use clap::{App, Arg, SubCommand};
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::Connection;
-use std::error::Error;
 use std::fs::{create_dir_all, File};
 use std::io::Write;
 use std::path::Path;
@@ -260,7 +260,7 @@ fn rollback_db(matches: &ArgMatches) {
 
     match diesel_migrations::revert_latest_migration(&connection) {
         Ok(s) => std::io::stdout().write(s.as_bytes()),
-        Err(e) => std::io::stderr().write(e.description().as_bytes()),
+        Err(e) => std::io::stderr().write(e.to_string().as_bytes()),
     }
     .expect("Rollback failed");
 }

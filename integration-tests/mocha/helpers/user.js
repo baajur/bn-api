@@ -33,7 +33,7 @@ const me  = async function(token) {
 };
 
 module.exports = {
-    registerAndLogin, me
+    registerAndLogin, me, makeid
 };
 
 function makeid(length) {

@@ -24,6 +24,7 @@ extern crate serde_derive;
 extern crate serde_json;
 #[macro_use]
 extern crate validator_derive;
+extern crate uuid;
 
 pub const SITE_NAME: &str = "Big Neon";
 

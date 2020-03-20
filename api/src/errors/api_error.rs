@@ -65,11 +65,7 @@ impl fmt::Display for ApiError {
     }
 }
 
-impl Error for ApiError {
-    fn description(&self) -> &str {
-        self.0.description()
-    }
-}
+impl Error for ApiError {}
 
 impl ResponseError for ApiError {
     fn error_response(&self) -> HttpResponse {

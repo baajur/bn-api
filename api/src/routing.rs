@@ -361,6 +361,7 @@ pub fn routes(app: &mut web::ServiceConfig) {
     )
     .service(web::resource("/users/tokens/{id}").route(web::delete().to(users::remove_push_notification_token)))
     .service(web::resource("/users").route(web::post().to(users::register_and_login)))
+    .service(web::resource("/users/email_only").route(web::post().to(users::register_with_email_only)))
     .service(
         web::resource("/users/{id}")
             .route(web::get().to(users::show))

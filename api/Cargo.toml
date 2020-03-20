@@ -40,6 +40,7 @@ log = { version = "0.4", features = ["max_level_debug"]}
 logging = {path="../logging"}
 macros = {path="../macros"}
 phonenumber = "0.2.3"
+rand = "0.7.3"
 r2d2 = "0.8"
 redis = "0.13"
 regex = "1"

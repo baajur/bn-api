@@ -31,6 +31,7 @@ pub struct Config {
     pub client_cache_period: u64,
     pub domain: String,
     pub email_templates: EmailTemplates,
+    pub email_only_registration_allowed: bool,
     pub environment: Environment,
     pub facebook_app_id: Option<String>,
     pub facebook_app_secret: Option<String>,
@@ -98,6 +99,7 @@ pub struct EmailTemplates {
     pub password_reset: EmailTemplate,
     pub ticket_count_report: EmailTemplate,
     pub resend_download_link: EmailTemplate,
+    pub user_registered_magic_link: EmailTemplate,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -156,11 +158,13 @@ const REDIS_CACHE_PERIOD_MILLI: &str = "REDIS_CACHE_PERIOD_MILLI";
 const CLIENT_CACHE_PERIOD: &str = "CLIENT_CACHE_PERIOD";
 const READONLY_DATABASE_URL: &str = "READONLY_DATABASE_URL";
 const DOMAIN: &str = "DOMAIN";
+const EMAIL_ONLY_REGISTRATION_ALLOWED: &str = "EMAIL_ONLY_REGISTRATION_ALLOWED";
 const EMAIL_TEMPLATES_CUSTOM_BROADCAST: &str = "EMAIL_TEMPLATES_CUSTOM_BROADCAST";
 const EMAIL_TEMPLATES_ORG_INVITE: &str = "EMAIL_TEMPLATES_ORG_INVITE";
 const EMAIL_TEMPLATES_PASSWORD_RESET: &str = "EMAIL_TEMPLATES_PASSWORD_RESET";
 const EMAIL_TEMPLATES_TICKET_COUNT_REPORT: &str = "EMAIL_TEMPLATES_TICKET_COUNT_REPORT";
 const EMAIL_TEMPLATES_RESEND_DOWNLOAD_LINK: &str = "EMAIL_TEMPLATES_RESEND_DOWNLOAD_LINK";
+const EMAIL_TEMPLATES_USER_REGISTERED_MAGIC_LINK: &str = "EMAIL_TEMPLATES_USER_REGISTERED_MAGIC_LINK";
 const ENVIRONMENT: &str = "ENVIRONMENT";
 const FACEBOOK_APP_ID: &str = "FACEBOOK_APP_ID";
 const FACEBOOK_APP_SECRET: &str = "FACEBOOK_APP_SECRET";
@@ -355,12 +359,14 @@ impl Config {
         let communication_default_source_email = get_env_var(COMMUNICATION_DEFAULT_SOURCE_EMAIL);
         let communication_default_source_phone = get_env_var(COMMUNICATION_DEFAULT_SOURCE_PHONE);
 
+        let email_only_registration_allowed = get_env_var(EMAIL_ONLY_REGISTRATION_ALLOWED).parse().unwrap();
         let email_templates = EmailTemplates {
             custom_broadcast: get_env_var(EMAIL_TEMPLATES_CUSTOM_BROADCAST).parse().unwrap(),
             org_invite: get_env_var(EMAIL_TEMPLATES_ORG_INVITE).parse().unwrap(),
             password_reset: get_env_var(EMAIL_TEMPLATES_PASSWORD_RESET).parse().unwrap(),
             ticket_count_report: get_env_var(EMAIL_TEMPLATES_TICKET_COUNT_REPORT).parse().unwrap(),
             resend_download_link: get_env_var(EMAIL_TEMPLATES_RESEND_DOWNLOAD_LINK).parse().unwrap(),
+            user_registered_magic_link: get_env_var(EMAIL_TEMPLATES_USER_REGISTERED_MAGIC_LINK).parse().unwrap(),
         };
 
         let customer_io_base_url = get_env_var(CUSTOMER_IO_BASE_URL);
@@ -459,6 +465,7 @@ impl Config {
             client_cache_period,
             readonly_database_url,
             domain,
+            email_only_registration_allowed,
             email_templates,
             environment,
             facebook_app_id,
