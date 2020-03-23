@@ -425,7 +425,7 @@ fn unknown_error_with_cause() {
         format!("{}", err),
         "\
 [1000] Invalid input
-Caused by: Unknown database error"
+Caused by: [10] Unknown database error"
     );
 }
 
