@@ -2,7 +2,7 @@ use crate::errors::AuthError;
 use crate::errors::*;
 use crate::jwt::errors::Error as JwtError;
 use crate::payments::PaymentProcessorError;
-use actix_web::http::header::ToStrError;
+use actix_web::http::{header::ToStrError, StatusCode};
 use actix_web::{error::ResponseError, HttpResponse};
 use branch_rs::BranchError;
 use chrono;
@@ -65,9 +65,17 @@ impl fmt::Display for ApiError {
     }
 }
 
-impl Error for ApiError {}
+impl Error for ApiError {
+    #[allow(deprecated)]
+    fn description(&self) -> &str {
+        self.0.description()
+    }
+}
 
 impl ResponseError for ApiError {
+    fn status_code(&self) -> StatusCode {
+        self.0.status_code()
+    }
     fn error_response(&self) -> HttpResponse {
         self.0.to_response()
     }

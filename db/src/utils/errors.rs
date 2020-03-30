@@ -30,6 +30,7 @@ pub enum ErrorCode {
     InternalError,
     AccessError,
     BusinessProcessError,
+    AlreadyScheduledError,
     ConcurrencyError,
     ValidationError {
         errors: HashMap<&'static str, Vec<ValidationError>>,
@@ -72,6 +73,7 @@ pub fn get_error_message(code: &ErrorCode) -> (i32, String) {
             "Could not delete record because there are other entities referencing it".to_string(),
         ),
         ParseError => (7400, "Parse failed:".to_string()),
+        AlreadyScheduledError => (7500, "Already Scheduled error".to_string()),
         // Try not to use this error
         Unknown => (10, "Unknown database error".to_string()),
     }
@@ -231,6 +233,13 @@ impl DatabaseError {
     pub fn business_process_error<T>(message: &str) -> Result<T, DatabaseError> {
         Err(DatabaseError::new(
             ErrorCode::BusinessProcessError,
+            Some(message.to_string()),
+        ))
+    }
+
+    pub fn already_scheduled_error<T>(message: &str) -> Result<T, DatabaseError> {
+        Err(DatabaseError::new(
+            ErrorCode::AlreadyScheduledError,
             Some(message.to_string()),
         ))
     }
@@ -402,6 +411,7 @@ impl<T> SingleResult<T> for Result<Vec<T>, DatabaseError> {
 #[test]
 fn error_with_unknown_code() {
     let err = DatabaseError::new(ErrorCode::Unknown, None);
+    assert_eq!(err.message, "Unknown database error");
     assert_eq!(err.code, 10);
     assert!(err.cause.is_none());
     assert_eq!(format!("{}", err), "[10] Unknown database error");
@@ -410,6 +420,7 @@ fn error_with_unknown_code() {
 #[test]
 fn error_with_known_code() {
     let err = DatabaseError::new(ErrorCode::InvalidInput, None);
+    assert_eq!(err.message, "Invalid input");
     assert_eq!(err.code, 1000);
     assert!(err.cause.is_none());
     assert_eq!(format!("{}", err), "[1000] Invalid input");
@@ -418,7 +429,9 @@ fn error_with_known_code() {
 #[test]
 fn unknown_error_with_cause() {
     let cause = DatabaseError::new(ErrorCode::Unknown, None);
-    let err = DatabaseError::new(ErrorCode::InvalidInput, Some(cause.to_string()));
+
+    let err = DatabaseError::new(ErrorCode::InvalidInput, Some(cause.message));
+    assert_eq!(err.message, "Invalid input");
     assert_eq!(err.code, 1000);
     assert!(err.cause.is_some());
     assert_eq!(
