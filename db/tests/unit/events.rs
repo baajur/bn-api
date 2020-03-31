@@ -105,6 +105,11 @@ fn clone_record() {
             true,
             true,
             true,
+            TicketTypeType::Token,
+            vec![],
+            None,
+            None,
+            None,
             None,
             connection,
         )
@@ -4465,6 +4470,11 @@ fn add_ticket_type() {
             true,
             true,
             true,
+            TicketTypeType::Token,
+            vec![],
+            None,
+            None,
+            None,
             None,
             conn,
         )
@@ -4500,6 +4510,11 @@ fn ticket_types() {
             true,
             true,
             true,
+            TicketTypeType::Token,
+            vec![],
+            None,
+            None,
+            None,
             None,
             conn,
         )
@@ -4522,6 +4537,11 @@ fn ticket_types() {
             true,
             true,
             true,
+            TicketTypeType::Token,
+            vec![],
+            None,
+            None,
+            None,
             None,
             conn,
         )
@@ -4536,7 +4556,7 @@ fn ticket_types() {
 fn localized_time() {
     let utc_time = NaiveDateTime::parse_from_str("2019-01-01 12:00:00.000", "%Y-%m-%d %H:%M:%S%.f").unwrap();
     let localized_time = Event::localized_time(Some(utc_time), Some("Africa/Johannesburg")).unwrap();
-    assert_eq!(localized_time.to_rfc2822(), "Tue,  1 Jan 2019 14:00:00 +0200");
+    assert_eq!(localized_time.to_rfc2822(), "Tue, 01 Jan 2019 14:00:00 +0200");
 
     let invalid_localized_time = Event::localized_time(None, Some("Africa/Johannesburg"));
     assert_eq!(invalid_localized_time, None);
@@ -4566,15 +4586,15 @@ fn get_all_localized_times() {
     let localized_times: EventLocalizedTimes = event.get_all_localized_times(Some(&venue));
     assert_eq!(
         localized_times.event_start.unwrap().to_rfc2822(),
-        "Tue,  1 Jan 2019 14:00:00 +0200"
+        "Tue, 01 Jan 2019 14:00:00 +0200"
     );
     assert_eq!(
         localized_times.event_end.unwrap().to_rfc2822(),
-        "Thu,  3 Jan 2019 14:00:00 +0200"
+        "Thu, 03 Jan 2019 14:00:00 +0200"
     );
     assert_eq!(
         localized_times.door_time.unwrap().to_rfc2822(),
-        "Tue,  1 Jan 2019 13:00:00 +0200"
+        "Tue, 01 Jan 2019 13:00:00 +0200"
     );
 }
 

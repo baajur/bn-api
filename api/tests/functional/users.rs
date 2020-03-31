@@ -511,6 +511,7 @@ async fn current_user() {
     assert_eq!(
         vec![
             Scopes::EventInterest,
+            Scopes::ListingWrite,
             Scopes::OrderReadOwn,
             Scopes::TransferCancelOwn,
             Scopes::TransferReadOwn,
@@ -563,6 +564,8 @@ async fn current_user_organization_owner() {
             "event:write",
             "hold:read",
             "hold:write",
+            "listing:write",
+            "loot-box:write",
             "note:delete",
             "note:read",
             "note:write",
@@ -578,6 +581,7 @@ async fn current_user_organization_owner() {
             "org:reports",
             "org:users",
             "org:write",
+            "rarity:write",
             "redeem:ticket",
             "scan-report:read",
             "settlement:read",
@@ -622,6 +626,7 @@ async fn current_user_organization_member() {
     assert_eq!(
         vec![
             Scopes::EventInterest,
+            Scopes::ListingWrite,
             Scopes::OrderReadOwn,
             Scopes::TransferCancelOwn,
             Scopes::TransferReadOwn,
@@ -656,6 +661,8 @@ async fn current_user_organization_member() {
             "event:write",
             "hold:read",
             "hold:write",
+            "listing:write",
+            "loot-box:write",
             "note:read",
             "note:write",
             "order:read",
@@ -665,6 +672,7 @@ async fn current_user_organization_member() {
             "org:fans",
             "org:read",
             "org:read-events",
+            "rarity:write",
             "redeem:ticket",
             "scan-report:read",
             "transfer:cancel",
