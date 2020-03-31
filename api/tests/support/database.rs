@@ -17,7 +17,6 @@ impl TestDatabase {
     pub fn new() -> TestDatabase {
         let config = Config::new(Environment::Test);
 
-
         let connection = PgConnection::establish(&config.database_url).unwrap_or_else(|e| {
             panic!(
                 "Connection to {} could not be established:{}",
