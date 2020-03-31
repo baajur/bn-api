@@ -79,7 +79,7 @@ pub fn routes(app: &mut web::ServiceConfig) {
     .service(
         web::resource("/events")
         // In future it may be better to cache this for every user to save the database hit
-        .wrap(CacheResource::new(CacheUsersBy::GlobalRoles))
+        .wrap(CacheResource::new(CacheUsersBy::PublicUsersOnly))
         .route(web::get().to(events::index))
         .route(web::post().to(events::create)),
     )
