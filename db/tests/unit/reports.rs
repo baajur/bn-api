@@ -2,7 +2,7 @@ use chrono::{Datelike, Duration, NaiveDate, TimeZone, Utc};
 use chrono_tz::Tz;
 use db::dev::TestProject;
 use db::models::*;
-use db::schema::orders;
+use db::schema::{orders, refunds};
 use db::utils::dates;
 use diesel;
 use diesel::prelude::*;
@@ -1507,6 +1507,412 @@ fn transaction_detail_report() {
     ];
     assert_eq!(result.data, expected_results);
     assert_eq!(result.paging.total, 3);
+}
+
+#[test]
+fn sales_summary_report() {
+    let project = TestProject::new();
+    let connection = project.get_connection();
+    let organization = project
+        .create_organization()
+        .with_event_fee()
+        .with_fees()
+        .with_cc_fee(1.1)
+        .finish();
+    let event = project
+        .create_event()
+        .with_organization(&organization)
+        .with_name("Event1".to_string())
+        .with_tickets()
+        .with_ticket_pricing()
+        .with_event_start(Utc::now().naive_utc() + Duration::days(20))
+        .finish();
+    let event2 = project
+        .create_event()
+        .with_organization(&organization)
+        .with_name("Event2".to_string())
+        .with_tickets()
+        .with_ticket_pricing()
+        .with_event_start(Utc::now().naive_utc() + Duration::days(21))
+        .finish();
+    let ticket_type = event.ticket_types(true, None, connection).unwrap().remove(0);
+    let ticket_type2 = event2.ticket_types(true, None, connection).unwrap().remove(0);
+    let fee_schedule = FeeSchedule::find(organization.fee_schedule_id, connection).unwrap();
+    let fee_schedule2 = FeeSchedule::find(organization.fee_schedule_id, connection).unwrap();
+    let ticket_pricing = ticket_type.current_ticket_pricing(false, connection).unwrap();
+    let ticket_pricing2 = ticket_type2.current_ticket_pricing(false, connection).unwrap();
+    let fee_schedule_range = fee_schedule
+        .get_range(ticket_pricing.price_in_cents, connection)
+        .unwrap();
+    let fee_schedule_range2 = fee_schedule2
+        .get_range(ticket_pricing2.price_in_cents, connection)
+        .unwrap();
+
+    let user = project.create_user().finish();
+    let ticket_quantity: i64 = 2;
+    let mut order = project
+        .create_order()
+        .quantity(ticket_quantity as u32)
+        .for_event(&event)
+        .is_paid()
+        .finish();
+    let order_paid_at = Utc::now().naive_utc() - Duration::days(6);
+    order = diesel::update(orders::table.filter(orders::id.eq(order.id)))
+        .set(orders::paid_at.eq(order_paid_at))
+        .get_result::<Order>(connection)
+        .unwrap();
+
+    let order2 = project.create_order().quantity(1).for_event(&event).is_paid().finish();
+    let order2_paid_at = Utc::now().naive_utc() - Duration::days(4);
+    diesel::update(orders::table.filter(orders::id.eq(order2.id)))
+        .set(orders::paid_at.eq(order2_paid_at))
+        .get_result::<Order>(connection)
+        .unwrap();
+
+    let result = Report::sales_summary_report(
+        organization.id,
+        Some(order.paid_at.unwrap() - Duration::hours(1)),
+        Some(order.paid_at.unwrap() + Duration::hours(1)),
+        Some(event.event_start.unwrap() - Duration::hours(1)),
+        Some(event.event_start.unwrap() + Duration::hours(1)),
+        0,
+        10,
+        connection,
+    )
+    .unwrap();
+    let expected_results = vec![
+        SalesSummaryReportRow {
+            total: 2,
+            event_name: event.name.clone(),
+            event_date: event.event_start,
+            ticket_name: ticket_type.name.clone(),
+            face_value_in_cents: ticket_pricing.price_in_cents,
+            online_sale_count: ticket_quantity,
+            total_online_client_fees_in_cents: fee_schedule_range.client_fee_in_cents * ticket_quantity,
+            box_office_sale_count: 0,
+            comp_sale_count: 0,
+        },
+        SalesSummaryReportRow {
+            total: 2,
+            event_name: event.name.clone(),
+            event_date: event.event_start,
+            ticket_name: "Per Order Fee".to_string(),
+            face_value_in_cents: 0,
+            online_sale_count: 0,
+            total_online_client_fees_in_cents: organization.client_event_fee_in_cents,
+            box_office_sale_count: 0,
+            comp_sale_count: 0,
+        },
+    ];
+    assert_eq!(result.data, expected_results);
+    assert_eq!(result.paging.total, 2);
+    assert_eq!(result.paging.limit, 10);
+
+    // Place three more orders, a box office order, a comp order, and an additional online sales order
+    let order3 = project
+        .create_order()
+        .quantity(1)
+        .for_event(&event)
+        .on_behalf_of_user(&user)
+        .is_paid()
+        .finish();
+    diesel::update(orders::table.filter(orders::id.eq(order3.id)))
+        .set(orders::paid_at.eq(order_paid_at))
+        .execute(connection)
+        .unwrap();
+
+    let comp = project
+        .create_hold()
+        .with_quantity(10)
+        .with_ticket_type_id(ticket_type.id)
+        .with_hold_type(HoldTypes::Comp)
+        .finish();
+    let order4 = project
+        .create_order()
+        .quantity(1)
+        .with_redemption_code(comp.redemption_code.clone().unwrap())
+        .for_event(&event)
+        .is_paid()
+        .finish();
+    diesel::update(orders::table.filter(orders::id.eq(order4.id)))
+        .set(orders::paid_at.eq(order_paid_at))
+        .execute(connection)
+        .unwrap();
+
+    let mut order5 = project.create_order().quantity(1).for_event(&event).is_paid().finish();
+    diesel::update(orders::table.filter(orders::id.eq(order5.id)))
+        .set(orders::paid_at.eq(order_paid_at))
+        .execute(connection)
+        .unwrap();
+
+    let result = Report::sales_summary_report(
+        organization.id,
+        Some(order.paid_at.unwrap() - Duration::hours(1)),
+        Some(order.paid_at.unwrap() + Duration::hours(1)),
+        Some(event.event_start.unwrap() - Duration::hours(1)),
+        Some(event.event_start.unwrap() + Duration::hours(1)),
+        0,
+        10,
+        connection,
+    )
+    .unwrap();
+    let expected_results = vec![
+        SalesSummaryReportRow {
+            total: 3,
+            event_name: event.name.clone(),
+            event_date: event.event_start,
+            ticket_name: ticket_type.name.clone(),
+            face_value_in_cents: ticket_pricing.price_in_cents,
+            online_sale_count: ticket_quantity + 1,
+            total_online_client_fees_in_cents: fee_schedule_range.client_fee_in_cents * (ticket_quantity + 1),
+            box_office_sale_count: 1,
+            comp_sale_count: 0,
+        },
+        SalesSummaryReportRow {
+            total: 3,
+            event_name: event.name.clone(),
+            event_date: event.event_start,
+            ticket_name: format!("{} - Hold - {}", ticket_type.name.clone(), comp.name),
+            face_value_in_cents: 0,
+            online_sale_count: 0,
+            total_online_client_fees_in_cents: 0,
+            box_office_sale_count: 0,
+            comp_sale_count: 1,
+        },
+        SalesSummaryReportRow {
+            total: 3,
+            event_name: event.name.clone(),
+            event_date: event.event_start,
+            ticket_name: "Per Order Fee".to_string(),
+            face_value_in_cents: 0,
+            online_sale_count: 0,
+            total_online_client_fees_in_cents: organization.client_event_fee_in_cents * 2,
+            box_office_sale_count: 0,
+            comp_sale_count: 0,
+        },
+    ];
+    assert_eq!(result.data, expected_results);
+    assert_eq!(result.paging.total, 3);
+    assert_eq!(result.paging.limit, 10);
+
+    // Create refund right outside of window, has no effect
+    let items = order5.items(&connection).unwrap();
+    let order_item = items.iter().find(|i| i.ticket_type_id == Some(ticket_type.id)).unwrap();
+    let tickets = TicketInstance::find_for_order_item(order_item.id, connection).unwrap();
+    let ticket = &tickets[0];
+    let refund_items = vec![RefundItemRequest {
+        order_item_id: order_item.id,
+        ticket_instance_id: Some(ticket.id),
+    }];
+    let (refund, _) = order5.refund(&refund_items, user.id, None, false, connection).unwrap();
+    let refund_created_at = order.paid_at.unwrap() + Duration::hours(1) + Duration::minutes(1);
+    diesel::update(refunds::table.filter(refunds::id.eq(refund.id)))
+        .set(refunds::created_at.eq(refund_created_at))
+        .execute(connection)
+        .unwrap();
+    let result = Report::sales_summary_report(
+        organization.id,
+        Some(order.paid_at.unwrap() - Duration::hours(1)),
+        Some(order.paid_at.unwrap() + Duration::hours(1)),
+        Some(event.event_start.unwrap() - Duration::hours(1)),
+        Some(event.event_start.unwrap() + Duration::hours(1)),
+        0,
+        10,
+        connection,
+    )
+    .unwrap();
+    assert_eq!(result.data, expected_results);
+    assert_eq!(result.paging.total, 3);
+    assert_eq!(result.paging.limit, 10);
+
+    // Move window so it includes refund
+    let result = Report::sales_summary_report(
+        organization.id,
+        Some(order.paid_at.unwrap() - Duration::hours(1)),
+        Some(order.paid_at.unwrap() + Duration::hours(1) + Duration::minutes(30)),
+        Some(event.event_start.unwrap() - Duration::hours(1)),
+        Some(event.event_start.unwrap() + Duration::hours(1)),
+        0,
+        10,
+        connection,
+    )
+    .unwrap();
+    let expected_results = vec![
+        SalesSummaryReportRow {
+            total: 3,
+            event_name: event.name.clone(),
+            event_date: event.event_start,
+            ticket_name: ticket_type.name.clone(),
+            face_value_in_cents: ticket_pricing.price_in_cents,
+            online_sale_count: ticket_quantity,
+            total_online_client_fees_in_cents: fee_schedule_range.client_fee_in_cents * ticket_quantity,
+            box_office_sale_count: 1,
+            comp_sale_count: 0,
+        },
+        SalesSummaryReportRow {
+            total: 3,
+            event_name: event.name.clone(),
+            event_date: event.event_start,
+            ticket_name: format!("{} - Hold - {}", ticket_type.name.clone(), comp.name),
+            face_value_in_cents: 0,
+            online_sale_count: 0,
+            total_online_client_fees_in_cents: 0,
+            box_office_sale_count: 0,
+            comp_sale_count: 1,
+        },
+        SalesSummaryReportRow {
+            total: 3,
+            event_name: event.name.clone(),
+            event_date: event.event_start,
+            ticket_name: "Per Order Fee".to_string(),
+            face_value_in_cents: 0,
+            online_sale_count: 0,
+            // Order fee was not included in refund
+            total_online_client_fees_in_cents: organization.client_event_fee_in_cents * 2,
+            box_office_sale_count: 0,
+            comp_sale_count: 0,
+        },
+    ];
+    assert_eq!(result.data, expected_results);
+    assert_eq!(result.paging.total, 3);
+    assert_eq!(result.paging.limit, 10);
+
+    // Move window so initial orders are not included
+    let result = Report::sales_summary_report(
+        organization.id,
+        Some(order.paid_at.unwrap() + Duration::hours(1)),
+        Some(order.paid_at.unwrap() + Duration::hours(1) + Duration::minutes(30)),
+        Some(event.event_start.unwrap() - Duration::hours(1)),
+        Some(event.event_start.unwrap() + Duration::hours(1)),
+        0,
+        10,
+        connection,
+    )
+    .unwrap();
+    let expected_results = vec![SalesSummaryReportRow {
+        total: 1,
+        event_name: event.name.clone(),
+        event_date: event.event_start,
+        ticket_name: ticket_type.name.clone(),
+        face_value_in_cents: ticket_pricing.price_in_cents,
+        online_sale_count: -1,
+        total_online_client_fees_in_cents: fee_schedule_range.client_fee_in_cents * -1,
+        box_office_sale_count: 0,
+        comp_sale_count: 0,
+    }];
+    assert_eq!(result.data, expected_results);
+    assert_eq!(result.paging.total, 1);
+    assert_eq!(result.paging.limit, 10);
+
+    // Moved window, an additional purchase zeroing out the records, returns only the event fee from the new order
+    let order6 = project.create_order().quantity(1).for_event(&event).is_paid().finish();
+    diesel::update(orders::table.filter(orders::id.eq(order6.id)))
+        .set(orders::paid_at.eq(refund_created_at))
+        .execute(connection)
+        .unwrap();
+    let result = Report::sales_summary_report(
+        organization.id,
+        Some(order.paid_at.unwrap() + Duration::hours(1)),
+        Some(order.paid_at.unwrap() + Duration::hours(1) + Duration::minutes(30)),
+        Some(event.event_start.unwrap() - Duration::hours(1)),
+        Some(event.event_start.unwrap() + Duration::hours(1)),
+        0,
+        10,
+        connection,
+    )
+    .unwrap();
+    let expected_results = vec![SalesSummaryReportRow {
+        total: 1,
+        event_name: event.name.clone(),
+        event_date: event.event_start,
+        ticket_name: "Per Order Fee".to_string(),
+        face_value_in_cents: 0,
+        online_sale_count: 0,
+        total_online_client_fees_in_cents: organization.client_event_fee_in_cents,
+        box_office_sale_count: 0,
+        comp_sale_count: 0,
+    }];
+    assert_eq!(result.data, expected_results);
+    assert_eq!(result.paging.total, 1);
+    assert_eq!(result.paging.limit, 10);
+
+    // Another event is included in result set (looking at entire window)
+    let order7 = project.create_order().quantity(1).for_event(&event2).is_paid().finish();
+    diesel::update(orders::table.filter(orders::id.eq(order7.id)))
+        .set(orders::paid_at.eq(refund_created_at))
+        .execute(connection)
+        .unwrap();
+    let result = Report::sales_summary_report(
+        organization.id,
+        Some(order.paid_at.unwrap() - Duration::hours(1)),
+        Some(order.paid_at.unwrap() + Duration::hours(1) + Duration::minutes(30)),
+        Some(event.event_start.unwrap() - Duration::hours(1)),
+        Some(event.event_start.unwrap() + Duration::days(3)),
+        0,
+        10,
+        connection,
+    )
+    .unwrap();
+    let expected_results = vec![
+        SalesSummaryReportRow {
+            total: 5,
+            event_name: event.name.clone(),
+            event_date: event.event_start,
+            ticket_name: ticket_type.name.clone(),
+            face_value_in_cents: ticket_pricing.price_in_cents,
+            online_sale_count: ticket_quantity + 1,
+            total_online_client_fees_in_cents: fee_schedule_range.client_fee_in_cents * (ticket_quantity + 1),
+            box_office_sale_count: 1,
+            comp_sale_count: 0,
+        },
+        SalesSummaryReportRow {
+            total: 5,
+            event_name: event.name.clone(),
+            event_date: event.event_start,
+            ticket_name: format!("{} - Hold - {}", ticket_type.name.clone(), comp.name),
+            face_value_in_cents: 0,
+            online_sale_count: 0,
+            total_online_client_fees_in_cents: 0,
+            box_office_sale_count: 0,
+            comp_sale_count: 1,
+        },
+        SalesSummaryReportRow {
+            total: 5,
+            event_name: event.name.clone(),
+            event_date: event.event_start,
+            ticket_name: "Per Order Fee".to_string(),
+            face_value_in_cents: 0,
+            online_sale_count: 0,
+            total_online_client_fees_in_cents: organization.client_event_fee_in_cents * 3,
+            box_office_sale_count: 0,
+            comp_sale_count: 0,
+        },
+        SalesSummaryReportRow {
+            total: 5,
+            event_name: event2.name.clone(),
+            event_date: event2.event_start,
+            ticket_name: ticket_type2.name.clone(),
+            face_value_in_cents: ticket_pricing2.price_in_cents,
+            online_sale_count: 1,
+            total_online_client_fees_in_cents: fee_schedule_range2.client_fee_in_cents,
+            box_office_sale_count: 0,
+            comp_sale_count: 0,
+        },
+        SalesSummaryReportRow {
+            total: 5,
+            event_name: event2.name.clone(),
+            event_date: event2.event_start,
+            ticket_name: "Per Order Fee".to_string(),
+            face_value_in_cents: 0,
+            online_sale_count: 0,
+            total_online_client_fees_in_cents: organization.client_event_fee_in_cents,
+            box_office_sale_count: 0,
+            comp_sale_count: 0,
+        },
+    ];
+    assert_eq!(result.data, expected_results);
+    assert_eq!(result.paging.total, 5);
+    assert_eq!(result.paging.limit, 10);
 }
 
 #[test]

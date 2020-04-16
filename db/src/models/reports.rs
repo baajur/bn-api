@@ -56,7 +56,6 @@ pub struct TicketSalesRow {
     #[sql_type = "BigInt"]
     pub online_sales_in_cents: i64,
     #[sql_type = "BigInt"]
-    #[sql_type = "BigInt"]
     pub box_office_face_sales_in_cents: i64,
     #[sql_type = "BigInt"]
     pub online_face_sales_in_cents: i64,
@@ -187,6 +186,29 @@ pub struct TicketCountRow {
 pub struct TicketSalesAndCounts {
     pub counts: Vec<TicketCountRow>,
     pub sales: Vec<TicketSalesRow>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Queryable, QueryableByName)]
+pub struct SalesSummaryReportRow {
+    #[serde(skip_serializing)]
+    #[sql_type = "BigInt"]
+    pub total: i64,
+    #[sql_type = "Text"]
+    pub event_name: String,
+    #[sql_type = "Nullable<Timestamp>"]
+    pub event_date: Option<NaiveDateTime>,
+    #[sql_type = "Text"]
+    pub ticket_name: String,
+    #[sql_type = "BigInt"]
+    pub face_value_in_cents: i64,
+    #[sql_type = "BigInt"]
+    pub online_sale_count: i64,
+    #[sql_type = "BigInt"]
+    pub total_online_client_fees_in_cents: i64,
+    #[sql_type = "BigInt"]
+    pub box_office_sale_count: i64,
+    #[sql_type = "BigInt"]
+    pub comp_sale_count: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Queryable, QueryableByName)]
@@ -823,6 +845,38 @@ impl Report {
             operators: operator_data,
             payments: payment_totals,
         })
+    }
+
+    pub fn sales_summary_report(
+        organization_id: Uuid,
+        transaction_date_start: Option<NaiveDateTime>,
+        transaction_date_end: Option<NaiveDateTime>,
+        event_date_start: Option<NaiveDateTime>,
+        event_date_end: Option<NaiveDateTime>,
+        page: u32,
+        limit: u32,
+        conn: &PgConnection,
+    ) -> Result<Payload<SalesSummaryReportRow>, DatabaseError> {
+        let query = include_str!("../queries/reports/reports_sales_summary.sql");
+        let q = diesel::sql_query(query)
+            .bind::<Nullable<Timestamp>, _>(transaction_date_start)
+            .bind::<Nullable<Timestamp>, _>(transaction_date_end)
+            .bind::<Nullable<Timestamp>, _>(event_date_start)
+            .bind::<Nullable<Timestamp>, _>(event_date_end)
+            .bind::<dUuid, _>(organization_id)
+            .bind::<BigInt, _>((page * limit) as i64)
+            .bind::<BigInt, _>(limit as i64);
+        let transaction_rows: Vec<SalesSummaryReportRow> = q
+            .get_results(conn)
+            .to_db_error(ErrorCode::QueryError, "Could not fetch report results")?;
+        let total = if transaction_rows.is_empty() {
+            0
+        } else {
+            transaction_rows[0].total
+        };
+        let mut paging = Paging::new(page, limit);
+        paging.total = total as u64;
+        Ok(Payload::new(transaction_rows, paging))
     }
 
     pub fn domain_transaction_detail_report(

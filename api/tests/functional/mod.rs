@@ -1,3 +1,4 @@
+mod admin;
 mod announcements;
 mod artists;
 mod auth;

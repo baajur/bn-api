@@ -12,6 +12,10 @@ pub fn routes(app: &mut web::ServiceConfig) {
     .service(web::resource("/admin/ticket_count").route(web::get().to(admin::admin::admin_ticket_count)))
     .service(web::resource("/admin/orders").route(web::get().to(admin::admin::orders)))
     .service(web::resource("/admin/reports").route(web::get().to(admin::reports::get_report)))
+    .service(
+        web::resource("/admin/organizations/{id}/reports")
+            .route(web::get().to(admin::reports::get_organization_report)),
+    )
     .service(web::resource("/a/t").route(web::get().to(analytics::track)))
     .service(web::resource("/announcements/{id}/engage").route(web::put().to(announcements::engage)))
     .service(

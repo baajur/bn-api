@@ -2,13 +2,18 @@ use crate::auth::user::User as AuthUser;
 use crate::database::Connection;
 use crate::errors::*;
 use crate::helpers::application;
-use crate::models::WebPayload;
-use actix_web::{http::StatusCode, web::Query, HttpResponse};
+use crate::models::*;
+use actix_web::{
+    http::StatusCode,
+    web::{Path, Query},
+    HttpResponse,
+};
 use chrono::prelude::*;
 use db::models::*;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::str;
+use uuid::Uuid;
 
 #[derive(Deserialize)]
 pub struct ReportQueryParameters {
@@ -63,6 +68,34 @@ pub async fn get_report(
         }
         _ => application::not_found(),
     }
+}
+
+pub async fn get_organization_report(
+    (connection, query, path, user): (Connection, Query<ReportQueryParameters>, Path<PathParameters>, AuthUser),
+) -> Result<HttpResponse, ApiError> {
+    match query.name.trim() {
+        "sales_summary" => Ok(sales_summary_report((connection, query, path.id, user))?.into_http_response()?),
+        _ => application::not_found(),
+    }
+}
+
+pub fn sales_summary_report(
+    (connection, query, organization_id, user): (Connection, Query<ReportQueryParameters>, Uuid, AuthUser),
+) -> Result<WebPayload<SalesSummaryReportRow>, ApiError> {
+    let connection = connection.get();
+    let organization = Organization::find(organization_id, connection)?;
+    user.requires_scope_for_organization(Scopes::SalesSummaryReportRead, &organization, connection)?;
+    let result = Report::sales_summary_report(
+        organization_id,
+        query.transaction_start_utc,
+        query.transaction_end_utc,
+        query.event_start_utc,
+        query.event_end_utc,
+        query.page.unwrap_or(0),
+        query.limit.unwrap_or(100),
+        connection,
+    )?;
+    Ok(WebPayload::new(StatusCode::OK, result))
 }
 
 pub fn domain_transaction_detail_report(
